@@ -86,6 +86,7 @@ extern void (*g_report_perf)(FILE* f);
 static void perf_write(FILE* f);
 static int g_classic = 1;       /* Classic: the DS's own 3D renderer, exact; Enhanced: 3D on the GPU at 1-4x */
 extern int g_comp_gl;
+extern int g_winstyle;          /* Enhanced: windows like the DS (0) or minimal (1), gpu2d.c */
 static int g_paused, g_turbo;   /* Game > Pause, Game > Fast forward (latched) */
 
 /* How the screens are shown (View and Screen menus). The DS Lite parts need OpenGL. */
@@ -432,6 +433,7 @@ static void settings_load(void) {
         else if (!strcmp(key, "widescreen_popout")) g_wide_pop = atoi(val) != 0;
         else if (!strcmp(key, "widescreen_battle_hud")) g_hud = atoi(val) != 0;
         else if (!strcmp(key, "smooth_textures")) g_smooth = atoi(val) != 0;
+        else if (!strcmp(key, "window_style")) { int v = atoi(val); if (v >= 0 && v <= 1) g_winstyle = v; }
         else if (!strcmp(key, "small_screen_opacity")) { int v = atoi(val); if (v >= 10 && v <= 100) opacity_saved = v; }
         else if (!strcmp(key, "second_window")) { int r[4]; if (sscanf(val, "%d,%d,%d,%d", &r[0], &r[1], &r[2], &r[3]) == 4 && r[2] > 0 && r[3] > 0) memcpy(g_win2_rect, r, sizeof r); }
         else if (!strcmp(key, "second_window_fullscreen")) g_win2_full = atoi(val) != 0;
@@ -480,6 +482,8 @@ static void settings_save(void) {
     fprintf(f, "resolution_3d = %d\n", g_res_auto || g_scale3d > 4 ? 4 : g_scale3d);   /* for versions before v29 */
     fprintf(f, "# enhanced: smooth textures (filtered) instead of the DS's blocky texels: 0 or 1\n");
     fprintf(f, "smooth_textures = %d\n", g_smooth);
+    fprintf(f, "# enhanced: menu and dialogue windows: 0 like the DS, 1 minimal (no frame, more see-through)\n");
+    fprintf(f, "window_style = %d\n", g_winstyle);
     fprintf(f, "# widescreen: the small screen (map, battle commands) in a window of its own: 0 or 1\n");
     fprintf(f, "widescreen_popout = %d\n", g_wide_pop);
     fprintf(f, "# widescreen battles: the party's panels along the top and the commands in the bottom left, over the 3D: 0 or 1\n");
@@ -637,6 +641,7 @@ static int try_gl(void) {
     const char* e = getenv("DQIX_SCALE3D");
     if (e) { g_scale3d = atoi(e); g_res_auto = 0; }
     if (getenv("DQIX_SMOOTH")) g_smooth = atoi(getenv("DQIX_SMOOTH")) != 0;   /* tests */
+    if (getenv("DQIX_WINDOW_STYLE")) g_winstyle = atoi(getenv("DQIX_WINDOW_STYLE")) == 1;
     gl_set_smooth(g_smooth);
     if (!gl_render_init(g_res_auto ? (getenv("DQIX_AUTO_FROM") ? 2 : 4) : g_scale3d)) {
         fprintf(stderr, "OpenGL renderer failed to start: using the software renderer\n");
@@ -1145,9 +1150,10 @@ static void present_gl(void) {
         if (lg && g_frame % 60 == 0) g_box_tests = g_box_in = g_box_widened = 0;
     }
     uint16_t pow; memcpy(&pow, &g_io[0x304], 2);
+    hud_update((pow >> 15) & 1);                                 /* (before composing: the minimal style cuts the cards out for it) */
+    gl_set_hud_cut(g_winstyle && g_hud_n > 0);
     gl_compose((pow >> 15) & 1, pow & 1);
     wide_update((pow >> 15) & 1);
-    hud_update((pow >> 15) & 1);
     gl_dump_hook();
     test_hooks();
     {   /* widescreen: the small screen see-through (O), but solid while the mouse is on it */
@@ -1264,6 +1270,7 @@ static void menu_sync(void) {
     menu_check(MI_POPOUT, g_wide_pop && wide); menu_enable(MI_POPOUT, g_gl);
     menu_check(MI_HUD, g_hud && wide); menu_enable(MI_HUD, g_gl);
     menu_check(MI_SMOOTH, g_smooth); menu_enable(MI_SMOOTH, g_gl && !g_classic);
+    for (int i = 0; i < 2; i++) { menu_check(MI_WINSTYLE0 + i, g_winstyle == i); menu_enable(MI_WINSTYLE0 + i, g_gl && !g_classic); }
     menu_check(MI_LCD, g_opt.lcd); menu_enable(MI_LCD, g_gl);
     int lcd = g_gl && g_opt.lcd;
     menu_check(MI_LCDCOL, g_opt.lcd_color); menu_enable(MI_LCDCOL, lcd);
@@ -1821,6 +1828,7 @@ static void do_action(int id) {
         break;
     case MI_RES_AUTO: if (g_gl && !g_classic) g_res_auto = 1; break;          /* auto_scale() picks it */
     case MI_SMOOTH: if (g_gl) { g_smooth = !g_smooth; gl_set_smooth(g_smooth); } break;
+    case MI_WINSTYLE0: case MI_WINSTYLE0 + 1: if (g_gl) g_winstyle = id - MI_WINSTYLE0; break;
     case MI_POPOUT:
         if (!g_gl) break;
         if (g_wide && !g_side_by_side) g_wide_pop = !g_wide_pop;

@@ -57,6 +57,9 @@ void menu_init(SDL_Window* win, const char* const* shell_names, int n_shells) {
     sep(res);
     item(res, MI_RES_AUTO, L"&Auto: as sharp as your screen (up to 12x)");
     item(gfx, MI_SMOOTH, L"&Smooth textures (Enhanced)");
+    HMENU wst = sub(gfx, L"&Window style (Enhanced)");
+    item(wst, MI_WINSTYLE0, L"Like the &DS");
+    item(wst, MI_WINSTYLE0 + 1, L"&Minimal: no frame, more see-through");
 
     HMENU scr = sub(g_bar, L"&Screen");
     item(scr, MI_LCD, L"&DS Lite screen\tF6");
